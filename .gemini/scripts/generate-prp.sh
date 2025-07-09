@@ -1,23 +1,21 @@
 #!/bin/bash
 
 # ---
-# generate-prp.sh (v2)
+# generate-prp.sh (v10 - Standardized on gemini-cli)
 #
 # Description:
-#   Generates a PRP by sending a feature request and a strict template
-#   directly to the Gemini API.
+#   Generates a PRP by piping a structured prompt to a gemini-cli tool.
 # ---
 
 # 1. Validate Input & Environment
 # --------------------------------
-if [ -z "$GEMINI_API_KEY" ]; then
-  echo "Error: GEMINI_API_KEY environment variable is not set."
-  exit 1
-fi
-if ! command -v jq &> /dev/null; then
-    echo "Error: jq is not installed. Please install it."
+if ! command -v gemini &> /dev/null; then
+    echo "Error: gemini-cli is not installed or not in your PATH."
+    echo "Please install it via npm: npm install -g @google/generative-ai-cli"
     exit 1
 fi
+# The gemini-cli tool is expected to use the GOOGLE_API_KEY env variable.
+
 if [ -z "$1" ]; then
   echo "Error: No feature file specified."
   exit 1
@@ -37,7 +35,6 @@ fi
 
 # 2. Define Prompts and Read Content
 # -----------------------------------
-# This is a much stricter and more explicit prompt.
 GENERATE_PRP_PROMPT=$(cat <<'END_PROMPT'
 You are an expert-level AI software engineer. Your task is to generate a complete Product Requirements Prompt (PRP) based on the provided user request.
 
@@ -47,60 +44,39 @@ Your final output must be ONLY the completed PRP markdown content. Do not includ
 END_PROMPT
 )
 
-# Read the content of the template and the user's request
 TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE_PATH")
 FEATURE_REQUEST_CONTENT=$(cat "$FEATURE_FILE_PATH")
 
-# 3. Prepare and Execute API Call
-# -------------------------------
-echo "✅ Preparing prompt for Gemini..."
-echo "✅ Contacting the Gemini API... (This may take a moment)"
-
-# Construct the JSON payload, injecting the template directly into the prompt.
-JSON_PAYLOAD=$(jq -n \
-                  --arg prompt "$GENERATE_PRP_PROMPT" \
-                  --arg template "$TEMPLATE_CONTENT" \
-                  --arg request "$FEATURE_REQUEST_CONTENT" \
-                  '{
-                    "contents": [
-                      {
-                        "parts": [
-                          {
-                            "text": "\($prompt)\n\n--- TEMPLATE TO FOLLOW ---\n\($template)\n\n--- USER REQUEST ---\n\($request)"
-                          }
-                        ]
-                      }
-                    ]
-                  }')
-
-# Make the API call using curl
-API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-latest:generateContent?key=${GEMINI_API_KEY}" \
--H "Content-Type: application/json" \
--d "$JSON_PAYLOAD")
-
-# 4. Parse the Response and Handle Errors
+# 3. Prepare and Execute API Call via CLI
 # ---------------------------------------
-if [ -z "$API_RESPONSE" ]; then
-    echo "Error: Received an empty response from the API."
+FULL_PROMPT=$(cat <<EOF
+$GENERATE_PRP_PROMPT
+
+--- TEMPLATE TO FOLLOW ---
+$TEMPLATE_CONTENT
+
+--- USER REQUEST ---
+$FEATURE_REQUEST_CONTENT
+EOF
+)
+
+echo "🤖 Piping prompt to gemini-cli to generate an implementation plan..."
+
+# The gemini-cli tool reads the prompt from standard input.
+# We use the 'generate-text' command and specify the model.
+PRP_CONTENT=$(echo "$FULL_PROMPT" | gemini generate-text --model gemini-2.0-flash)
+
+if [ -z "$PRP_CONTENT" ]; then
+    echo "Error: Received an empty response from the gemini-cli."
     exit 1
 fi
 
-PRP_CONTENT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
-
-if [ -z "$PRP_CONTENT" ] || [ "$PRP_CONTENT" == "null" ]; then
-    echo "Error: Could not extract content from the API response."
-    echo "Full API Response:"
-    echo "$API_RESPONSE"
-    exit 1
-fi
-
-# 5. Save the Output
+# 4. Save the Output
 # ------------------
 mkdir -p PRPs
 
 BASENAME=$(basename "$FEATURE_FILE_PATH" .md | tr '[:upper:]' '[:lower:]')
-# Add a suffix to distinguish this new PRP
-OUTPUT_FILE="PRPs/${BASENAME}_prp_v2.md"
+OUTPUT_FILE="PRPs/${BASENAME}_prp.md"
 
 echo "$PRP_CONTENT" > "$OUTPUT_FILE"
 
