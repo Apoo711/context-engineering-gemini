@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ---
-# generate-prp.sh (v10 - Standardized on gemini-cli)
+# generate-prp.sh (v11 - Aligned with Official Docs)
 #
 # Description:
-#   Generates a PRP by piping a structured prompt to a gemini-cli tool.
+#   Generates a PRP by piping a structured prompt to the gemini cli.
 # ---
 
-# 1. Validate Input & Environment
+# 1. Validate Environment
 # --------------------------------
 if ! command -v gemini &> /dev/null; then
     echo "Error: gemini-cli is not installed or not in your PATH."
@@ -33,7 +33,7 @@ if [ ! -f "$TEMPLATE_FILE_PATH" ]; then
   exit 1
 fi
 
-# 2. Define Prompts and Read Content
+# 2. Define and Prepare the Prompt
 # -----------------------------------
 GENERATE_PRP_PROMPT=$(cat <<'END_PROMPT'
 You are an expert-level AI software engineer. Your task is to generate a complete Product Requirements Prompt (PRP) based on the provided user request.
@@ -47,8 +47,6 @@ END_PROMPT
 TEMPLATE_CONTENT=$(cat "$TEMPLATE_FILE_PATH")
 FEATURE_REQUEST_CONTENT=$(cat "$FEATURE_FILE_PATH")
 
-# 3. Prepare and Execute API Call via CLI
-# ---------------------------------------
 FULL_PROMPT=$(cat <<EOF
 $GENERATE_PRP_PROMPT
 
@@ -60,11 +58,14 @@ $FEATURE_REQUEST_CONTENT
 EOF
 )
 
-echo "🤖 Piping prompt to gemini-cli to generate an implementation plan..."
+# 3. Execute API Call via CLI
+# ---------------------------------------
+echo "🤖 Piping prompt to gemini cli to generate an implementation plan..."
 
-# The gemini-cli tool reads the prompt from standard input.
-# We use the 'generate-text' command and specify the model.
-PRP_CONTENT=$(echo "$FULL_PROMPT" | gemini generate-text --model gemini-2.0-flash)
+# The documentation implies a simple piping mechanism. We pass the prompt
+# to the standard input of the `gemini` command. We use the --model flag
+# to specify the model, as shown in the configuration docs.
+PRP_CONTENT=$(echo "$FULL_PROMPT" | gemini --model gemini-2.0-flash)
 
 if [ -z "$PRP_CONTENT" ]; then
     echo "Error: Received an empty response from the gemini-cli."
